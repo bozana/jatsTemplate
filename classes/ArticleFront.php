@@ -499,7 +499,7 @@ class ArticleFront extends DOMDocument
                     ->setAttribute('xlink:href', $licenseUrl)->parentNode;
                 if ($ccBadge) {
                     $licenseElement->appendChild($this->createElement('license-p'))
-                        ->appendChild($this->createTextNode($ccBadge));
+                        ->appendChild($this->createTextNode(strip_tags($ccBadge)));
                 }
             }
         }
