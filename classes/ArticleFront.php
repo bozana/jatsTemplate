@@ -96,14 +96,14 @@ class ArticleFront extends DOMDocument
         // Editorial team (contrib-group)
         $journalMetaElement->appendChild($this->createJournalMetaJournalContribGroup($journal, $request));
 
-        if (!empty($journal->getData('onlineIssn'))) {
+        if (!empty($onlineIssn = $journal->getData('onlineIssn'))) {
             $journalMetaElement->appendChild($this->createElement('issn'))
-                ->appendChild($this->createTextNode($journal->getData('onlineIssn')))->parentNode
+                ->appendChild($this->createTextNode($onlineIssn))->parentNode
                 ->setAttribute('pub-type', 'epub');
         }
-        if (!empty($journal->getData('printIssn'))) {
+        if (!empty($printIssn = $journal->getData('printIssn'))) {
             $journalMetaElement->appendChild($this->createElement('issn'))
-                ->appendChild($this->createTextNode($journal->getData('printIssn')))->parentNode
+                ->appendChild($this->createTextNode($printIssn))->parentNode
                 ->setAttribute('pub-type', 'ppub');
         }
 
@@ -148,12 +148,13 @@ class ArticleFront extends DOMDocument
     {
         $journalTitleGroupElement = $this->appendChild($this->createElement('journal-title-group'));
 
+        $primaryLocale = $journal->getPrimaryLocale();
         $journalTitleGroupElement->appendChild($this->createElement('journal-title'))
-            ->setAttribute('xml:lang', LocaleConversion::toBcp47($journal->getPrimaryLocale()))->parentNode
-            ->appendChild($this->createTextNode($journal->getName($journal->getPrimaryLocale())));
+            ->setAttribute('xml:lang', LocaleConversion::toBcp47($primaryLocale))->parentNode
+            ->appendChild($this->createTextNode($journal->getName($primaryLocale)));
 
         foreach ($journal->getName() as $locale => $title) {
-            if ($locale == $journal->getPrimaryLocale()) {
+            if ($locale == $primaryLocale) {
                 continue;
             }
             $journalTitleGroupElement->appendChild($this->createElement('trans-title-group'))
@@ -729,8 +730,43 @@ class ArticleFront extends DOMDocument
             ->filterByFileStages([SubmissionFile::SUBMISSION_FILE_PRODUCTION_READY])
             ->getMany();
 
-        if (!empty($coverUrl) || $layoutFiles->isNotEmpty()) {
+        $prevJournalTitles = [];
+        $currentNames = $journal->getName() ?? [];
+        foreach (($publication->getData('contextName') ?? []) as $locale => $stampedTitle) {
+            if (!empty($stampedTitle) && $stampedTitle !== ($currentNames[$locale] ?? null)) {
+                $prevJournalTitles[$locale] = $stampedTitle;
+            }
+        }
+
+        $prevScalars = [];
+        $stampedOnlineIssn = $publication->getData('onlineIssn');
+        if (!empty($stampedOnlineIssn) && $stampedOnlineIssn !== $journal->getData('onlineIssn')) {
+            $prevScalars['prev-online-issn'] = $stampedOnlineIssn;
+        }
+        $stampedPrintIssn = $publication->getData('printIssn');
+        if (!empty($stampedPrintIssn) && $stampedPrintIssn !== $journal->getData('printIssn')) {
+            $prevScalars['prev-print-issn'] = $stampedPrintIssn;
+        }
+        $stampedPublisher = $publication->getData('publisher');
+        if (!empty($stampedPublisher) && $stampedPublisher !== $journal->getData('publisherInstitution')) {
+            $prevScalars['prev-publisher'] = $stampedPublisher;
+        }
+
+        if (!empty($coverUrl) || $layoutFiles->isNotEmpty() || !empty($prevJournalTitles) || !empty($prevScalars)) {
             $customMetaGroupElement = $articleMetaElement->appendChild($this->createElement('custom-meta-group'));
+
+            foreach ($prevJournalTitles as $locale => $title) {
+                $customMetaElement = $customMetaGroupElement->appendChild($this->createElement('custom-meta'));
+                $customMetaElement->setAttribute('xml:lang', LocaleConversion::toBcp47($locale));
+                $customMetaElement->appendChild($this->createElement('meta-name'))->appendChild($this->createTextNode('prev-journal-title'));
+                $customMetaElement->appendChild($this->createElement('meta-value'))->appendChild($this->createTextNode($title));
+            }
+
+            foreach ($prevScalars as $metaName => $metaValue) {
+                $customMetaElement = $customMetaGroupElement->appendChild($this->createElement('custom-meta'));
+                $customMetaElement->appendChild($this->createElement('meta-name'))->appendChild($this->createTextNode($metaName));
+                $customMetaElement->appendChild($this->createElement('meta-value'))->appendChild($this->createTextNode($metaValue));
+            }
 
             // Issue cover page
             if ($coverUrl) {
